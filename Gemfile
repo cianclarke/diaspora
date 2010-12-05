@@ -49,6 +49,7 @@ gem 'aws'
 gem 'fastercsv', :require => false
 gem 'jammit'
 gem 'rest-client'
+gem 'typhoeus'
 #Backups
 gem "cloudfiles", :require => false
 
