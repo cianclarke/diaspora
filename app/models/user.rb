@@ -157,6 +157,7 @@ class User
     Rails.logger.info("event=dispatch user=#{diaspora_handle} post=#{post.id.to_s}")
     push_to_aspects(post, aspects_from_ids(aspect_ids))
 
+
     if post.public && post.respond_to?(:message)
 
       if opts[:url] && post.photos.count > 0
@@ -166,6 +167,8 @@ class User
       else
         message = post.message
       end
+
+      post_to_hub(post)
 
       self.services.each do |service|
         self.send("post_to_#{service.provider}".to_sym, service, message)
@@ -241,20 +244,34 @@ class User
   end
 
   def push_to_aspects(post, aspects)
-    #send to the aspects
-    target_contacts = aspects.inject([]) { |contacts,aspect|
-      contacts = contacts | aspect.contacts
-    }
-
-    post_to_hub(post) if post.respond_to?(:public) && post.public
+    target_contacts = contacts_in_aspects(aspects)
     push_to_people(post, self.person_objects(target_contacts))
   end
 
   def push_to_people(post, people)
     salmon = salmon(post)
-    people.each do |person|
+
+    remote_people, local_people = people.partition {|x| x.owner_id.nil?}
+
+    local_people.each do |person|
       push_to_person(salmon, post, person)
     end
+
+    # push to remote people
+    unless remote_people.empty?
+
+      # since retractions are not presisted in the database, we need to special
+      # case them from the HttpMulti job, which looks in the mongo for the object
+      # to send
+      if post.is_a? Retraction
+        remote_people.each do |person|
+          push_to_person(salmon, post, person)
+        end
+      else
+        remote_people.collect!{|x| x.id}
+        Resque.enqueue(Jobs::HttpMulti, self.id, post.class.to_s, post.id, remote_people)
+      end
+    end 
   end
 
   def push_to_person(salmon, post, person)
@@ -326,7 +343,9 @@ class User
 
     post.unsocket_from_uid(self.id, :aspect_ids => aspect_ids) if post.respond_to? :unsocket_from_uid
     retraction = Retraction.for(post)
-    push_to_people retraction, people_in_aspects(aspects_with_post(post.id))
+    target_people = people_in_aspects(aspects_with_post(post.id))
+
+    push_to_people(retraction, target_people)
     retraction
   end
 

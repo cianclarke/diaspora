@@ -165,7 +165,7 @@ describe User do
     let!(:aspect3) { user3.aspects.create(:name => 'heroes') }
     let!(:aspect4) { user4.aspects.create(:name => 'heroes') }
 
-    let!(:post) { user.build_post :status_message, :message => "hey" }
+    let!(:post) { p = user.build_post :status_message, :message => "hey"; p.save; p}
 
     before do
       connect_users(user, aspect, user2, aspect2)
@@ -193,15 +193,35 @@ describe User do
         user.push_to_people(post, [user2.person, user3.person])
       end
 
-      it 'does not use the queue for local transfer' do
-        MessageHandler.should_receive(:add_post_request).once
+      it 'does not use httpmulti for local transfer' do
+        Resque.should_not_receive(:enqueue).with(Jobs::HttpMulti, anything)
 
         remote_person = user4.person
         remote_person.owner_id = nil
         remote_person.save
         remote_person.reload
 
+        user.push_to_people(post, [user2.person, user3.person])
+      end
+
+      it 'pushes to local people' do
+        remote_person = user4.person
+        remote_person.owner_id = nil
+        remote_person.save
+        remote_person.reload
+
+        user.should_receive(:push_to_person).twice
         user.push_to_people(post, [user2.person, user3.person, remote_person])
+      end
+
+      it 'pushes to remote people' do
+        remote_person = user4.person
+        remote_person.owner_id = nil
+        remote_person.save
+        remote_person.reload
+
+        Resque.should_receive(:enqueue).with(Jobs::HttpMulti, user.id, post.class.to_s, post.id, [remote_person.id]).once
+        user.push_to_people(post, [remote_person])
       end
     end
 

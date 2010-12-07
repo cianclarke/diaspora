@@ -95,12 +95,12 @@ describe Comment do
 
 
     it "should send a user's comment on a person's post to that person" do
-      MessageHandler.should_receive(:add_post_request).once
+      Resque.should_receive(:enqueue).with(Jobs::HttpMulti, anything,anything,anything,anything).once
       user.comment "yo", :on => @person_status
     end
 
     it 'should send a user comment on his own post to lots of people' do
-      MessageHandler.should_receive(:add_post_request).once
+      Resque.should_receive(:enqueue).with(Jobs::HttpMulti, anything,anything,anything,anything).once
 
       user2.raw_visible_posts.count.should == 0
 
@@ -112,13 +112,13 @@ describe Comment do
 
     it 'should send a comment a person made on your post to all people' do
       comment = Comment.new(:person_id => @person.id, :diaspora_handle => @person.diaspora_handle, :text => "cats", :post => @user_status)
-      MessageHandler.should_receive(:add_post_request).once
+      Resque.should_receive(:enqueue).with(Jobs::HttpMulti, anything,anything,anything,anything).once
       user.receive comment.to_diaspora_xml, @person
     end
 
     it 'should send a comment a user made on your post to all people' do
       comment = user2.comment( "balls", :on => @user_status)
-      MessageHandler.should_receive(:add_post_request).once
+      Resque.should_receive(:enqueue).with(Jobs::HttpMulti, anything,anything,anything,anything).once
       user.receive comment.to_diaspora_xml, user2.person
     end
 
